@@ -102,21 +102,16 @@
                     if (value) {
                         console.log("Receive:", value);
 
-                        // DIST= で始まる距離測定データは無視
-                        if (value.includes("DIST=")) {
-                            continue;
-                        }
-
                         // すでに処理中の場合はスキップ
                         if (isProcessing) {
                             console.log("処理中のためスキップ");
                             continue;
                         }
 
-                        // "OPEN_1", "OPEN_2", "OPEN_3" のような特定のパターンにマッチ
-                        const match = value.trim().match(/OPEN_([1-3])/);
+                        // 1, 2, 3 のいずれかにマッチ（前後の空白も許容）
+                        const match = value.trim().match(/^([1-3])$/);
                         if (match) {
-                            const id = match[1]; // グループ1がID
+                            const id = match[1];
                             const currentTime = Date.now();
 
                             // 同じIDを1秒以内に処理しないようにする（デバウンス）
