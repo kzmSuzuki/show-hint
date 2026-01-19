@@ -1,22 +1,65 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>結果</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding-top: 50px;
+        }
+
+        h2 {
+            font-size: 10rem;
+            margin-bottom: 0px;
+        }
+
+        #pcId {
+            font-size: 15rem;
+            font-weight: bolder;
+            margin-top: 0px;
+        }
+    </style>
 </head>
+
 <body>
-    <h1>移動成功！</h1>
-    <p id="pcId"></p>
+    <h1>ドローン接近！</h1>
+    <h2 id="area"></h2>
+    <p id="pcId">読み込み中...</p>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const pcId = urlParams.get('id'); // "1", "2", "3" のいずれか
-        console.log(pcId);
+        const area = urlParams.get('area'); // "A", "B", "C" のいずれか
         if (pcId) {
-            document.getElementById('pcId').innerText = `PCのIDは${pcId}です。`;
+            console.log("pcId:", pcId);
         } else {
-            document.getElementById('pcId').innerText = 'IDが指定されていません。';
+            console.log("pcIdが指定されていません。");
         }
+        // 2. GASのWebアプリURL（デプロイしたURL）
+        const gasUrl = "https://script.google.com/macros/s/AKfycbyzsaRR_yDxoosN1BV8mTqvCNdFHsmn5lslvmqESX7zygKO8pzuE3ZSPb5qA-gyU_mM/exec";
+
+        // 3. APIにリクエスト（IDを添えて）
+        fetch(`${gasUrl}?id=${pcId}`)
+            .then(response => response.json())
+            .then(data => {
+                // スプレッドシートから取得したデータでページを書き換える処理
+                console.log("GAS Data:", data);
+                document.getElementById('area').innerText = "避難所  " + data.area + " の人数";
+                document.getElementById('pcId').innerText = data.num;
+            })
+            .then(() => {
+                const waitSeconds = 5;
+                setTimeout(() => {
+                    // index.htmlへ戻る
+                    window.location.href = "index.html";
+                }, waitSeconds * 1000);
+            });
+
+
     </script>
 </body>
+
 </html>
