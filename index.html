@@ -53,9 +53,12 @@
         const DESTINATION_URL = "result.html";
 
         let currentPort = null;
+        let isProcessing = false; // 重複処理を防ぐフラグ
+        let lastProcessedId = null; // 最後に処理したID
+        let lastProcessedTime = 0; // 最後に処理した時刻
 
         // シリアルポートに接続して受信を開始する関数
-        async function connectAndListen(port) {
+        async function connectAndListen(port, isReconnection = false) {
             try {
                 if (!port.readable) {
                     await port.open({ baudRate: 9600 }); // Arduino側のSerial.beginと合わせる
@@ -66,9 +69,31 @@
                 statusDiv.className = "connected";
                 connectBtn.style.display = "none";
 
+                // 再接続時は古いデータを捨てるため、少し待機してからバッファをクリア
+                if (isReconnection) {
+                    console.log("再接続検出。バッファクリア待機中...");
+                    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
+                }
+
                 const decoder = new TextDecoderStream();
                 port.readable.pipeTo(decoder.writable);
                 const reader = decoder.readable.getReader();
+
+                // 再接続時は古いバッファデータを読み捨て
+                if (isReconnection) {
+                    const startTime = Date.now();
+                    while (Date.now() - startTime < 300) { // 300msの間読み捨て
+                        const { value, done } = await Promise.race([
+                            reader.read(),
+                            new Promise(resolve => setTimeout(() => resolve({ value: null, done: false }), 100))
+                        ]);
+                        if (value) {
+                            console.log("古いバッファデータを破棄:", value);
+                        }
+                        if (done) break;
+                    }
+                    console.log("バッファクリア完了。データ待機開始...");
+                }
 
                 // 受信ループ
                 while (true) {
@@ -77,11 +102,32 @@
                     if (value) {
                         console.log("Receive:", value);
 
+                        // すでに処理中の場合はスキップ
+                        if (isProcessing) {
+                            console.log("処理中のためスキップ");
+                            continue;
+                        }
+
                         // 文字列の中に1, 2, 3が含まれているか判定
                         // 例: Arduinoから "FLAG_1" と送る場合
-                        const match = value.match(/[1-3]/);
+                        const match = value.trim().match(/[1-3]/);
                         if (match) {
                             const id = match[0];
+                            const currentTime = Date.now();
+
+                            // 同じIDを1秒以内に処理しないようにする（デバウンス）
+                            if (id === lastProcessedId && (currentTime - lastProcessedTime) < 1000) {
+                                console.log("同じIDのため無視:", id);
+                                continue;
+                            }
+
+                            // 処理開始
+                            isProcessing = true;
+                            lastProcessedId = id;
+                            lastProcessedTime = currentTime;
+
+                            console.log("ID検出:", id, "→ ページ遷移します");
+
                             // 接続を維持したまま遷移
                             reader.releaseLock();
                             // クエリパラメータをつけて遷移
@@ -95,6 +141,7 @@
                 statusDiv.innerText = "エラー: " + error.message;
                 statusDiv.className = "disconnected";
                 connectBtn.style.display = "block";
+                isProcessing = false;
             }
         }
 
@@ -105,7 +152,7 @@
                 if (ports.length > 0) {
                     // 以前接続したポートがあれば自動的に再接続
                     console.log("以前接続したポートを検出しました。自動再接続します...");
-                    await connectAndListen(ports[0]);
+                    await connectAndListen(ports[0], true); // 再接続フラグをtrue
                 }
             } catch (error) {
                 console.error('自動再接続エラー:', error);
@@ -117,7 +164,7 @@
             try {
                 // シリアルポートの要求
                 const port = await navigator.serial.requestPort();
-                await connectAndListen(port);
+                await connectAndListen(port, false); // 初回接続
             } catch (error) {
                 console.error('Error:', error);
                 statusDiv.innerText = "エラー: " + error.message;
