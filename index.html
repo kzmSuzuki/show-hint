@@ -1,22 +1,47 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arduino Serial Redirector</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding-top: 50px; }
-        h1 { font-size: 10rem; }
-        #status { margin: 20px; padding: 10px; border: 1px solid #ccc; }
-        button { padding: 10px 20px; font-size: 1.2rem; cursor: pointer; }
-        .connected { color: green; }
-        .disconnected { color: red; }
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding-top: 50px;
+        }
+
+        h1 {
+            font-size: 10rem;
+        }
+
+        #status {
+            margin: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+
+        .connected {
+            color: green;
+        }
+
+        .disconnected {
+            color: red;
+        }
     </style>
 </head>
+
 <body>
     <h1>近づいてください</h1>
     <p>【セッティング方法】<br>Arduinoを接続して、下のボタンを押してください。</p>
-    
+
     <button id="connectBtn">Arduinoに接続する</button>
     <div id="status" class="disconnected">接続状態: 未接続</div>
 
@@ -25,14 +50,18 @@
         const statusDiv = document.getElementById('status');
 
         // 遷移先のベースURL（GitHub Pages上の別ページなど）
-        const DESTINATION_URL = "result.html"; 
+        const DESTINATION_URL = "result.html";
 
-        connectBtn.addEventListener('click', async () => {
+        let currentPort = null;
+
+        // シリアルポートに接続して受信を開始する関数
+        async function connectAndListen(port) {
             try {
-                // シリアルポートの要求
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 }); // Arduino側のSerial.beginと合わせる
+                if (!port.readable) {
+                    await port.open({ baudRate: 9600 }); // Arduino側のSerial.beginと合わせる
+                }
 
+                currentPort = port;
                 statusDiv.innerText = "接続状態: 接続中（フラグ待機中...）";
                 statusDiv.className = "connected";
                 connectBtn.style.display = "none";
@@ -47,17 +76,48 @@
                     if (done) break;
                     if (value) {
                         console.log("Receive:", value);
-                        
+
                         // 文字列の中に1, 2, 3が含まれているか判定
                         // 例: Arduinoから "FLAG_1" と送る場合
                         const match = value.match(/[1-3]/);
                         if (match) {
                             const id = match[0];
+                            // 接続を維持したまま遷移
+                            reader.releaseLock();
                             // クエリパラメータをつけて遷移
                             window.location.href = `${DESTINATION_URL}?id=${id}`;
+                            break;
                         }
                     }
                 }
+            } catch (error) {
+                console.error('Error:', error);
+                statusDiv.innerText = "エラー: " + error.message;
+                statusDiv.className = "disconnected";
+                connectBtn.style.display = "block";
+            }
+        }
+
+        // ページ読み込み時に以前接続したポートがあるかチェック
+        window.addEventListener('load', async () => {
+            try {
+                const ports = await navigator.serial.getPorts();
+                if (ports.length > 0) {
+                    // 以前接続したポートがあれば自動的に再接続
+                    console.log("以前接続したポートを検出しました。自動再接続します...");
+                    await connectAndListen(ports[0]);
+                }
+            } catch (error) {
+                console.error('自動再接続エラー:', error);
+            }
+        });
+
+        // 手動接続ボタン
+        connectBtn.addEventListener('click', async () => {
+            try {
+                // シリアルポートの要求
+                const port = await navigator.serial.requestPort();
+                await connectAndListen(port);
             } catch (error) {
                 console.error('Error:', error);
                 statusDiv.innerText = "エラー: " + error.message;
@@ -66,4 +126,5 @@
         });
     </script>
 </body>
+
 </html>
